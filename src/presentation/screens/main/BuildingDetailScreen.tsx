@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, ComponentProps } from "react";
 import {
   View,
   Text,
@@ -20,13 +20,27 @@ import {
 } from "firebase/firestore";
 import { db } from "../../../firebaseConfig";
 
+// Tipado para evitar errores de TypeScript en iconos
+type MaterialIconName = ComponentProps<typeof MaterialCommunityIcons>['name'];
+
 export default function BuildingDetailScreen({ route, navigation }: any) {
   const { edificioId } = route.params;
   const [loading, setLoading] = useState(true);
   const [edificio, setEdificio] = useState<any>(null);
   const [personal, setPersonal] = useState<any[]>([]);
 
-  // Estado de Permisos (Visibilidad/Acceso total)
+  const planesDisponibles = ["Gratis", "Basic", "Pro", "Premium"];
+
+  const getPlanIcon = (plan: string): MaterialIconName => {
+    switch (plan) {
+      case "Gratis": return "leaf";
+      case "Basic": return "star-outline";
+      case "Pro": return "shield-check-outline";
+      case "Premium": return "crown-outline";
+      default: return "help-circle-outline";
+    }
+  };
+
   const [permisos, setPermisos] = useState({
     canUseNovelties: false,
     canManageBuilding: false,
@@ -36,7 +50,6 @@ export default function BuildingDetailScreen({ route, navigation }: any) {
     isAppActive: true,
   });
 
-  // Estado de Mantenimiento (Bloqueo visual/estético)
   const [mantenimiento, setMantenimiento] = useState({
     anuncios: false,
     agregarEdificio: false,
@@ -93,6 +106,14 @@ export default function BuildingDetailScreen({ route, navigation }: any) {
     };
   }, [edificioId]);
 
+  const updateBuildingPlan = async (nuevoPlan: string) => {
+    try {
+      await updateDoc(doc(db, "edificios", edificioId), { plan: nuevoPlan });
+    } catch (e) {
+      Alert.alert("Error", "No se pudo actualizar el plan");
+    }
+  };
+
   const togglePermission = async (key: keyof typeof permisos) => {
     try {
       await updateDoc(doc(db, "edificios", edificioId), {
@@ -127,28 +148,23 @@ export default function BuildingDetailScreen({ route, navigation }: any) {
     ]);
   };
 
-  // Helper para Mantenimiento
+  // Helpers de Renderizado
   const MaintSwitch = ({ title, mKey, color = "#F59E0B" }: any) => (
     <View style={styles.switchRow}>
       <Text style={styles.switchLabel}>{title}</Text>
       <Switch
         trackColor={{ false: "#1E293B", true: color + "50" }}
-        thumbColor={
-          mantenimiento[mKey as keyof typeof mantenimiento] ? color : "#94A3B8"
-        }
+        thumbColor={mantenimiento[mKey as keyof typeof mantenimiento] ? color : "#94A3B8"}
         value={mantenimiento[mKey as keyof typeof mantenimiento]}
-        onValueChange={() =>
-          toggleMantenimiento(mKey as keyof typeof mantenimiento)
-        }
+        onValueChange={() => toggleMantenimiento(mKey as keyof typeof mantenimiento)}
       />
     </View>
   );
 
-  // Helper para Visibilidad de Pantallas
   const PermissionCard = ({ title, sub, icon, pKey, color }: any) => (
     <View style={styles.switchCard}>
       <View style={styles.switchInfo}>
-        <MaterialCommunityIcons name={icon} size={24} color={color} />
+        <MaterialCommunityIcons name={icon as MaterialIconName} size={24} color={color} />
         <View style={styles.switchTextContainer}>
           <Text style={styles.switchTitle}>{title}</Text>
           <Text style={styles.switchSub}>{sub}</Text>
@@ -161,12 +177,7 @@ export default function BuildingDetailScreen({ route, navigation }: any) {
     </View>
   );
 
-  if (loading)
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#10B981" />
-      </View>
-    );
+  if (loading) return <View style={styles.centered}><ActivityIndicator size="large" color="#10B981" /></View>;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -181,27 +192,46 @@ export default function BuildingDetailScreen({ route, navigation }: any) {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        {/* INFO CARD */}
+        
+        {/* INFO CARD PRINCIPAL */}
         <View style={styles.infoCard}>
-          <View
-            style={[
-              styles.statusDot,
-              { backgroundColor: permisos.isAppActive ? "#10B981" : "#EF4444" },
-            ]}
-          />
+          <View style={[styles.statusDot, { backgroundColor: permisos.isAppActive ? "#10B981" : "#EF4444" }]} />
           <View style={styles.infoTextContainer}>
             <Text style={styles.buildingName}>{edificio?.nombreEdificio}</Text>
-            <Text style={styles.buildingSub}>
-              ESTADO: {permisos.isAppActive ? "ACTIVO" : "SUSPENDIDO"}
-            </Text>
+            <Text style={styles.buildingSub}>NIC: {edificio?.nic || "---"}</Text>
           </View>
-          <Switch
-            value={permisos.isAppActive}
-            onValueChange={() => togglePermission("isAppActive")}
-          />
+          <Switch value={permisos.isAppActive} onValueChange={() => togglePermission("isAppActive")} />
         </View>
 
-        {/* SECCIÓN MANTENIMIENTO */}
+        {/* PLAN ACTUAL VISUAL */}
+        <View style={styles.currentPlanCard}>
+          <MaterialCommunityIcons name={getPlanIcon(edificio?.plan)} size={30} color="#F59E0B" />
+          <View style={{ marginLeft: 15 }}>
+            <Text style={styles.currentPlanLabel}>PLAN ACTUAL</Text>
+            <Text style={styles.currentPlanValue}>{edificio?.plan || "Sin Plan"}</Text>
+          </View>
+        </View>
+
+        {/* SELECTOR DE PLANES */}
+        <Text style={[styles.sectionTitle, { color: "#F59E0B" }]}>Cambiar Suscripción</Text>
+        <View style={styles.planGrid}>
+          {planesDisponibles.map((p) => (
+            <TouchableOpacity
+              key={p}
+              style={[styles.planChip, edificio?.plan === p && styles.planChipActive]}
+              onPress={() => updateBuildingPlan(p)}
+            >
+              <MaterialCommunityIcons 
+                name={getPlanIcon(p)} 
+                size={16} 
+                color={edificio?.plan === p ? "#020617" : "#F59E0B"} 
+              />
+              <Text style={[styles.planChipText, edificio?.plan === p && styles.planChipTextActive]}>{p}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* MANTENIMIENTO */}
         <Text style={styles.sectionTitle}>Mantenimiento (Bloqueo Visual)</Text>
         <View style={styles.card}>
           <MaintSwitch title="Módulo Anuncios" mKey="anuncios" />
@@ -214,81 +244,41 @@ export default function BuildingDetailScreen({ route, navigation }: any) {
           <View style={styles.divider} />
           <MaintSwitch title="Libro de Novedades" mKey="novedades" />
           <View style={styles.divider} />
-          <MaintSwitch
-            title="Suscripciones"
-            mKey="suscripcion"
-            color="#3B82F6"
-          />
+          <MaintSwitch title="Suscripciones" mKey="suscripcion" color="#3B82F6" />
           <View style={styles.divider} />
-          <MaintSwitch
-            title="Seguridad/Privacidad"
-            mKey="seguridad"
-            color="#10B981"
-          />
+          <MaintSwitch title="Seguridad/Privacidad" mKey="seguridad" color="#10B981" />
         </View>
 
-        {/* SECCIÓN PERMISOS / PANTALLAS */}
-        <Text style={[styles.sectionTitle, { color: "#EC4899" }]}>
-          Visibilidad de Pantallas
-        </Text>
+        {/* PERMISOS / VISIBILIDAD */}
+        <Text style={[styles.sectionTitle, { color: "#EC4899" }]}>Visibilidad de Pantallas</Text>
+        <PermissionCard title="Admin Panel" sub="BuildAdminScreen" icon="view-dashboard-edit" pKey="canAccessAdminPanel" color="#EC4899" />
+        <PermissionCard title="Secure Screen" sub="Vigilancia" icon="security" pKey="canUseSecure" color="#10B981" />
+        <PermissionCard title="Novedades" sub="Uso de Novelties" icon="notebook-edit" pKey="canUseNovelties" color="#F59E0B" />
+        <PermissionCard title="Gestión Edificio" sub="Configuración" icon="office-building-cog" pKey="canManageBuilding" color="#3B82F6" />
+        <PermissionCard title="Ver Planes" sub="Suscripción" icon="credit-card-search" pKey="canViewPlan" color="#8B5CF6" />
 
-        <PermissionCard
-          title="Admin Panel"
-          sub="Acceso a BuildAdminScreen"
-          icon="view-dashboard-edit"
-          pKey="canAccessAdminPanel"
-          color="#EC4899"
-        />
-        <PermissionCard
-          title="Secure Screen"
-          sub="Módulo de Vigilancia"
-          icon="security"
-          pKey="canUseSecure"
-          color="#10B981"
-        />
-        <PermissionCard
-          title="Novedades"
-          sub="Uso de NoveltiesScreen"
-          icon="notebook-edit"
-          pKey="canUseNovelties"
-          color="#F59E0B"
-        />
-        <PermissionCard
-          title="Gestión Edificio"
-          sub="Configuración estructural"
-          icon="office-building-cog"
-          pKey="canManageBuilding"
-          color="#3B82F6"
-        />
-        <PermissionCard
-          title="Ver Planes"
-          sub="Visualización de suscripción"
-          icon="credit-card-search"
-          pKey="canViewPlan"
-          color="#8B5CF6"
-        />
+        {/* LISTA DE PERSONAL (RESTAURADO) */}
+        <Text style={[styles.sectionTitle, { marginTop: 20, color: "#94A3B8" }]}>Personal del Edificio</Text>
+        {personal.length > 0 ? (
+          personal.map((item) => (
+            <View key={item.id} style={styles.staffCard}>
+              <View style={styles.staffInfo}>
+                <Ionicons name="person-circle-outline" size={24} color="#3B82F6" />
+                <View style={{ marginLeft: 10 }}>
+                  <Text style={styles.staffName}>{item.nombre}</Text>
+                  <Text style={styles.staffSubText}>{item.rol}</Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={() => {/* deleteStaff(item.id) */}}>
+                <Ionicons name="trash-outline" size={20} color="#EF4444" />
+              </TouchableOpacity>
+            </View>
+          ))
+        ) : (
+          <View style={styles.emptyStaff}><Text style={styles.emptyText}>Sin personal registrado</Text></View>
+        )}
 
-        {/* LISTA DE PERSONAL (Simplificada para el ejemplo, pero funcional) */}
-        <Text
-          style={[styles.sectionTitle, { marginTop: 20, color: "#94A3B8" }]}
-        >
-          Personal
-        </Text>
-        {personal.map((item) => (
-          <View key={item.id} style={styles.staffCard}>
-            <Text style={styles.staffName}>
-              {item.nombre} -{" "}
-              <Text style={{ fontWeight: "normal" }}>{item.rol}</Text>
-            </Text>
-            <TouchableOpacity
-              onPress={() => {
-                /* Tu función deleteStaffMember */
-              }}
-            >
-              <Ionicons name="trash-outline" size={20} color="#EF4444" />
-            </TouchableOpacity>
-          </View>
-        ))}
+        <View style={{ height: 60 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -296,81 +286,38 @@ export default function BuildingDetailScreen({ route, navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#020617" },
-  centered: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#020617",
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-     paddingHorizontal: 20, paddingTop: 40, paddingBottom: 20,
-    backgroundColor: "#0F172A",
-  },
+  centered: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#020617" },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingTop: 40, paddingBottom: 20, backgroundColor: "#0F172A" },
   headerTitle: { color: "#FFF", fontSize: 14, fontWeight: "bold" },
   content: { padding: 20 },
-  sectionTitle: {
-    color: "#10B981",
-    fontSize: 12,
-    fontWeight: "bold",
-    marginBottom: 15,
-    marginTop: 10,
-    textTransform: "uppercase",
-  },
-  infoCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#0F172A",
-    padding: 20,
-    borderRadius: 20,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: "#1E293B",
-  },
+  sectionTitle: { color: "#10B981", fontSize: 12, fontWeight: "bold", marginBottom: 15, marginTop: 10, textTransform: "uppercase" },
+  infoCard: { flexDirection: "row", alignItems: "center", backgroundColor: "#0F172A", padding: 20, borderRadius: 20, marginBottom: 15, borderWidth: 1, borderColor: "#1E293B" },
   statusDot: { width: 10, height: 10, borderRadius: 5, marginRight: 12 },
   infoTextContainer: { flex: 1 },
   buildingName: { color: "#FFF", fontSize: 18, fontWeight: "bold" },
   buildingSub: { color: "#64748B", fontSize: 11 },
-  card: {
-    backgroundColor: "#0F172A",
-    borderRadius: 20,
-    padding: 15,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: "#1E293B",
-  },
-  switchRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 8,
-  },
+  currentPlanCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E293B', padding: 20, borderRadius: 20, marginBottom: 20, borderLeftWidth: 5, borderLeftColor: '#F59E0B' },
+  currentPlanLabel: { color: '#64748B', fontSize: 10, fontWeight: 'bold' },
+  currentPlanValue: { color: '#FFF', fontSize: 22, fontWeight: 'bold' },
+  planGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", marginBottom: 20 },
+  planChip: { width: "48%", flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: "#0F172A", paddingVertical: 14, borderRadius: 14, marginBottom: 10, borderWidth: 1, borderColor: "#F59E0B" },
+  planChipActive: { backgroundColor: "#F59E0B" },
+  planChipText: { color: "#F59E0B", fontSize: 13, fontWeight: "bold", marginLeft: 8 },
+  planChipTextActive: { color: "#020617" },
+  card: { backgroundColor: "#0F172A", borderRadius: 20, padding: 15, marginBottom: 20, borderWidth: 1, borderColor: "#1E293B" },
+  switchRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8 },
   switchLabel: { color: "#FFF", fontSize: 14 },
   divider: { height: 1, backgroundColor: "#1E293B", marginVertical: 4 },
-  switchCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#0F172A",
-    padding: 15,
-    borderRadius: 18,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#1E293B",
-  },
+  switchCard: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#0F172A", padding: 15, borderRadius: 18, marginBottom: 8, borderWidth: 1, borderColor: "#1E293B" },
   switchInfo: { flexDirection: "row", alignItems: "center", flex: 1 },
   switchTextContainer: { marginLeft: 12, flex: 1 },
   switchTitle: { color: "#FFF", fontSize: 14, fontWeight: "bold" },
   switchSub: { color: "#64748B", fontSize: 11 },
-  staffCard: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    backgroundColor: "#0F172A",
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 6,
-  },
-  staffName: { color: "#FFF", fontSize: 13, fontWeight: "bold" },
+  // --- ESTILOS PERSONAL ---
+  staffCard: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#0F172A", padding: 15, borderRadius: 18, marginBottom: 8, borderWidth: 1, borderColor: "#1E293B" },
+  staffInfo: { flexDirection: "row", alignItems: "center" },
+  staffName: { color: "#FFF", fontSize: 15, fontWeight: "bold" },
+  staffSubText: { color: "#64748B", fontSize: 12 },
+  emptyStaff: { padding: 20, alignItems: 'center' },
+  emptyText: { color: '#64748B', fontSize: 13 }
 });
